@@ -1,0 +1,34 @@
+name: CI/CD AI DevOps Agent
+on: [push]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Tests
+        id: test_step
+        run: |
+          pip install -r requirements.txt
+          pytest > results.txt 2>&1 || echo "FAILED" > status.txt
+          cat results.txt
+
+      - name: 🤖 AI Agent Analysis
+        if: always()
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          LOGS=$(cat results.txt)
+          STATUS=$(cat status.txt 2>/dev/null || echo "PASSED")
+          
+          # We send the logs to the AI to "explain" it to the customer
+          PROMPT="You are Nova, an expert DevOps Agent. Briefly explain these test results to a non-technical customer. Status: $STATUS. Logs: $LOGS"
+          
+          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"contents\": [{\"parts\":[{\"text\": \"$PROMPT\"}]}]}")
+          
+          # Extract and display the AI's summary
+          echo "### 🤖 Nova AI Agent Commentary" >> $GITHUB_STEP_SUMMARY
+          echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text' >> $GITHUB_STEP_SUMMARY
